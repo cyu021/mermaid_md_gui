@@ -37,8 +37,9 @@ Supported Features
    - Fixed Symbol Mapping: Backslash (\) is correctly rendered in both GUI and exported images (preventing legacy Won symbol ₩ mapping).
    - Improved Layout: Optimized vertical alignment and node padding for tall Asian characters.
 
-7. Smart File Handling:
-   - Consistent Paths: File dialogs ("Open", "Save As", "Export") now default to the application's directory.
+7. Smart File Handling & Path Entry:
+   - Manual Path Entry: New dialogs for Open, Save, and Export allow for direct absolute path input or browsing.
+   - Consistent Paths: File dialogs default to the application's executable directory.
    - Path Sanitization: Automatic conversion of path separators and Won symbols for consistent display across all platforms.
 
 
@@ -46,7 +47,7 @@ How to Use
 ----------
 
 1. Launching the Application:
-   - Run via Go: `go run main.go bundled.go`
+   - Run via Go: `go run main.go bundled.go icon_bundled.go`
    - Or execute the compiled binary: `./mermaid-md-gui` (Linux) or `mermaid-md-gui.exe` (Windows).
 
 2. Editing the Mindmap:
@@ -107,28 +108,28 @@ System Requirements
 Build Instructions
 ------------------
 
-IMPORTANT: Always include `bundled.go` in the build command to ensure font support.
+IMPORTANT: Always include `bundled.go` and `icon_bundled.go` in the build command to ensure asset support.
 
 ### 1. Linux (WSL/Native)
    - Prerequisites: `gcc`, `libgl1-mesa-dev`, `xorg-dev`.
    - Command:
      ```bash
      NPROC=$(nproc); GOMAX=$((NPROC > 2 ? NPROC - 2 : 1)); \
-     go build -v -p $GOMAX -o mermaid-md-gui main.go bundled.go
+     go build -v -p $GOMAX -o mermaid-md-gui main.go bundled.go icon_bundled.go
      ```
 
 ### 2. Windows (Native)
    - Prerequisites: `gcc` (MinGW-w64).
    - Command:
      ```cmd
-     go build -v -ldflags "-s -w -H windowsgui" -o mermaid-md-gui.exe main.go bundled.go
+     go build -v -ldflags "-s -w -H windowsgui" -o mermaid-md-gui.exe main.go bundled.go icon_bundled.go
      ```
 
 ### 3. macOS
    - Prerequisites: `Xcode` or Command Line Tools.
    - Command (Intel/Apple Silicon):
      ```bash
-     go build -v -o mermaid-md-gui-mac main.go bundled.go
+     go build -v -o mermaid-md-gui-mac main.go bundled.go icon_bundled.go
      ```
 
 ### 4. Windows (Cross-Compilation from WSL/Linux)
@@ -137,5 +138,5 @@ IMPORTANT: Always include `bundled.go` in the build command to ensure font suppo
      ```bash
      GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc \
      go build -v -ldflags="-s -w -extldflags=-static -H=windowsgui" \
-     -o mermaid-md-gui.exe main.go bundled.go
+     -o mermaid-md-gui.exe main.go bundled.go icon_bundled.go
      ```

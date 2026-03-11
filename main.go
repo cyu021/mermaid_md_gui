@@ -883,6 +883,7 @@ func main() {
 	logMsg("Initializing GUI application..."); a := app.NewWithID("com.mermaid.md.gui")
 	a.Settings().SetTheme(&customTheme{})
 	w := a.NewWindow("Mermaid Mindmap Editor")
+	w.SetIcon(resourceIconPng)
 	e := &editorApp{mainApp: a, window: w, zoomScale: 1.0, collapsedNodes: make(map[string]bool), layoutMode: "balanced", lineThickness: 2, nodePadding: 10}
 	e.entry, e.renderArea, e.interactiveBG, e.scroll = widget.NewMultiLineEntry(), container.NewWithoutLayout(), newInteractiveBackground(e), container.NewScroll(nil); e.canvasContainer = container.New(&canvasLayout{app: e}, e.interactiveBG, e.renderArea); e.scroll.Content = e.canvasContainer; e.statusLabel, e.miniMap = widget.NewLabel("Ready"), newMiniMap(e); e.miniContainer = container.New(&miniMapLayout{}, e.miniMap)
 	e.layoutSelect = widget.NewSelect([]string{"Mindmap (Balanced)", "Mindmap (Fishbone)", "Logic (Left)", "Logic (Right)"}, func(s string) { e.setLayout(s) }); e.layoutSelect.SetSelected("Mindmap (Balanced)")
