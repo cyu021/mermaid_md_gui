@@ -625,28 +625,114 @@ func getMindmapBounds(n *Node, minX, minY, maxX, maxY *float32) {
 	if !n.Collapsed { for _, c := range n.Children { getMindmapBounds(c, minX, minY, maxX, maxY) } }
 }
 func colorToRGB(c color.Color) (int, int, int) { r, g, b, _ := c.RGBA(); return int(r >> 8), int(g >> 8), int(b >> 8) }
+func resolveFontPath(linuxPath, winRel string) string {
+	if runtime.GOOS == "windows" { return "C:\\Windows\\Fonts\\" + winRel }
+	if _, err := os.Stat(linuxPath); err == nil { return linuxPath }
+	// WSL fallback
+	wslPath := "/c/Windows/Fonts/" + winRel
+	if _, err := os.Stat(wslPath); err == nil { return wslPath }
+	return "/mnt/c/Windows/Fonts/" + winRel
+}
+
 func getFallbackFontData() []byte {
-	paths := []string{"/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf", "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", "C:\\Windows\\Fonts\\msyh.ttc"}
-	for _, p := range paths { if data, err := os.ReadFile(p); err == nil { return data } }
+	paths := []string{
+		resolveFontPath("", "msyh.ttc"),
+		resolveFontPath("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", "simsun.ttc"),
+		resolveFontPath("", "malgun.ttf"),
+		"/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+	}
+	for _, p := range paths {
+		if p == "" { continue }
+		if data, err := os.ReadFile(p); err == nil {
+			logMsg("Font: Loading export fallback from " + p)
+			return data
+		}
+	}
 	return theme.DefaultTextFont().Content()
 }
-func getOpentypeFonts() (*opentype.Font, *opentype.Font) {
-	fP, _ := opentype.Parse(theme.DefaultTextFont().Content()); dataF, fF := getFallbackFontData(), (*opentype.Font)(nil)
-	if coll, err := opentype.ParseCollection(dataF); err == nil { fF, _ = coll.Font(0) } else { fF, _ = opentype.Parse(dataF) }
-	if fF == nil { fF = fP }
-	return fP, fF
+
+func getFallbackFontDataTTF() []byte {
+	paths := []string{
+		resolveFontPath("", "malgun.ttf"),
+		resolveFontPath("", "simhei.ttf"),
+		"/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+	}
+	for _, p := range paths {
+		if p == "" || strings.HasSuffix(p, ".ttc") { continue }
+		if data, err := os.ReadFile(p); err == nil {
+			logMsg("Font: Loading UI theme font from " + p)
+			return data
+		}
+	}
+	return theme.DefaultTextFont().Content()
 }
-func drawCompositeString(img draw.Image, txt string, x, y float64, fP, fF font.Face, col color.Color) {
-	dP, dF := &font.Drawer{Dst: img, Src: image.NewUniform(col), Face: fP}, &font.Drawer{Dst: img, Src: image.NewUniform(col), Face: fF}
-	dP.Dot = fixed.Point26_6{X: fixed.Int26_6(x * 64), Y: fixed.Int26_6(y * 64)}; dF.Dot = dP.Dot
+
+func getOpentypeFonts() (*opentype.Font, *opentype.Font, *opentype.Font) {
+	var fP, fC, fK *opentype.Font
+	
+	// 1. Primary Latin
+	lP := resolveFontPath("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "arial.ttf")
+	if data, err := os.ReadFile(lP); err == nil {
+		if f, err := opentype.Parse(data); err == nil { fP = f; logMsg("Font: Loaded Latin from " + lP) }
+	}
+	if fP == nil { fP, _ = opentype.Parse(theme.DefaultTextFont().Content()) }
+
+	// 2. Chinese/Japanese
+	cPaths := []string{resolveFontPath("", "msyh.ttc"), resolveFontPath("", "simsun.ttc"), "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"}
+	for _, p := range cPaths {
+		if data, err := os.ReadFile(p); err == nil {
+			if coll, err := opentype.ParseCollection(data); err == nil && coll.NumFonts() > 0 {
+				fC, _ = coll.Font(0); logMsg("Font: Loaded Chinese/Japanese from " + p); break
+			} else if f, err := opentype.Parse(data); err == nil {
+				fC = f; logMsg("Font: Loaded Chinese/Japanese (TTF) from " + p); break
+			}
+		}
+	}
+
+	// 3. Korean
+	kPaths := []string{resolveFontPath("", "malgun.ttf"), resolveFontPath("", "batang.ttc")}
+	for _, p := range kPaths {
+		if data, err := os.ReadFile(p); err == nil {
+			if coll, err := opentype.ParseCollection(data); err == nil && coll.NumFonts() > 0 {
+				fK, _ = coll.Font(0); logMsg("Font: Loaded Korean from " + p); break
+			} else if f, err := opentype.Parse(data); err == nil {
+				fK = f; logMsg("Font: Loaded Korean (TTF) from " + p); break
+			}
+		}
+	}
+	
+	if fC == nil { fC = fP }
+	if fK == nil { fK = fC }
+	return fP, fC, fK
+}
+
+func isRuneKorean(r rune) bool {
+	return (r >= 0xAC00 && r <= 0xD7AF) || // Hangul Syllables
+	       (r >= 0x1100 && r <= 0x11FF) || // Hangul Jamo
+	       (r >= 0x3130 && r <= 0x318F) || // Hangul Compatibility Jamo
+	       (r >= 0xA960 && r <= 0xA97F) || // Hangul Jamo Extended-A
+	       (r >= 0xD7B0 && r <= 0xD7FF)    // Hangul Jamo Extended-B
+}
+
+func isRuneCJK(r rune) bool {
+	return (r >= 0x2E80 && r <= 0x9FFF) || (r >= 0x3400 && r <= 0x4DBF) || (r >= 0x3040 && r <= 0x30FF) || (r >= 0xFF00 && r <= 0xFFEF)
+}
+
+func drawCompositeString(img draw.Image, txt string, x, y float64, fP, fC, fK font.Face, col color.Color) {
+	dot := fixed.Point26_6{X: fixed.Int26_6(x * 64), Y: fixed.Int26_6(y * 64)}
+	dLat, dChi, dKor := &font.Drawer{Dst: img, Src: image.NewUniform(col), Face: fP, Dot: dot}, &font.Drawer{Dst: img, Src: image.NewUniform(col), Face: fC, Dot: dot}, &font.Drawer{Dst: img, Src: image.NewUniform(col), Face: fK, Dot: dot}
 	for _, r := range txt {
-		if (r >= 0x2E80 && r <= 0x9FFF) || (r >= 0x3040 && r <= 0x30FF) || (r >= 0xAC00 && r <= 0xD7AF) || (r >= 0xFF00 && r <= 0xFFEF) { dF.DrawString(string(r)); dP.Dot = dF.Dot } else { dP.DrawString(string(r)); dF.Dot = dP.Dot }
+		s := string(r)
+		if isRuneKorean(r) { dKor.DrawString(s); dLat.Dot, dChi.Dot = dKor.Dot, dKor.Dot } else if isRuneCJK(r) { dChi.DrawString(s); dLat.Dot, dKor.Dot = dChi.Dot, dChi.Dot } else { dLat.DrawString(s); dChi.Dot, dKor.Dot = dLat.Dot, dLat.Dot }
 	}
 }
-func measureCompositeString(txt string, fP, fF font.Face) float64 {
-	dP, dF := &font.Drawer{Face: fP}, &font.Drawer{Face: fF}; var tW fixed.Int26_6
+
+func measureCompositeString(txt string, fP, fC, fK font.Face) float64 {
+	var tW fixed.Int26_6
+	dLat, dChi, dKor := &font.Drawer{Face: fP}, &font.Drawer{Face: fC}, &font.Drawer{Face: fK}
 	for _, r := range txt {
-		if (r >= 0x2E80 && r <= 0x9FFF) || (r >= 0x3040 && r <= 0x30FF) || (r >= 0xAC00 && r <= 0xD7AF) || (r >= 0xFF00 && r <= 0xFFEF) { tW += dF.MeasureString(string(r)) } else { tW += dP.MeasureString(string(r)) }
+		s := string(r)
+		if isRuneKorean(r) { tW += dKor.MeasureString(s) } else if isRuneCJK(r) { tW += dChi.MeasureString(s) } else { tW += dLat.MeasureString(s) }
 	}
 	return float64(tW) / 64.0
 }
@@ -670,7 +756,21 @@ func (e *editorApp) exportPNG() {
 			defer w.Close(); var minX, minY, maxX, maxY float32 = 4000, 4000, 0, 0; getMindmapBounds(e.rootNode, &minX, &minY, &maxX, &maxY)
 			z, margin := float64(e.zoomScale), 50.0; if minX > maxX { return }; outW, outH := int((float64(maxX-minX)+margin*2)*z), int((float64(maxY-minY)+margin*2)*z)
 			img, bgCol := image.NewRGBA(image.Rect(0, 0, outW, outH)), color.White; draw.Draw(img, img.Bounds(), &image.Uniform{bgCol}, image.Point{}, draw.Src)
-			fP, fF := getOpentypeFonts(); fPR, _ := opentype.NewFace(fP, &opentype.FaceOptions{Size: 13 * z, DPI: 72}); fFR, _ := opentype.NewFace(fF, &opentype.FaceOptions{Size: 13 * z, DPI: 72}); fPB, _ := opentype.NewFace(fP, &opentype.FaceOptions{Size: 15 * z, DPI: 72}); fFB, _ := opentype.NewFace(fF, &opentype.FaceOptions{Size: 15 * z, DPI: 72}); fPI, _ := opentype.NewFace(fP, &opentype.FaceOptions{Size: 16 * z, DPI: 72}); fFI, _ := opentype.NewFace(fF, &opentype.FaceOptions{Size: 16 * z, DPI: 72})
+			fP, fC, fK := getOpentypeFonts()
+			fPR, errPR := opentype.NewFace(fP, &opentype.FaceOptions{Size: 13 * z, DPI: 72})
+			fCR, errCR := opentype.NewFace(fC, &opentype.FaceOptions{Size: 13 * z, DPI: 72})
+			fKR, errKR := opentype.NewFace(fK, &opentype.FaceOptions{Size: 13 * z, DPI: 72})
+			fPB, errPB := opentype.NewFace(fP, &opentype.FaceOptions{Size: 15 * z, DPI: 72})
+			fCB, errCB := opentype.NewFace(fC, &opentype.FaceOptions{Size: 15 * z, DPI: 72})
+			fKB, errKB := opentype.NewFace(fK, &opentype.FaceOptions{Size: 15 * z, DPI: 72})
+			fPI, errPI := opentype.NewFace(fP, &opentype.FaceOptions{Size: 16 * z, DPI: 72})
+			fCI, errCI := opentype.NewFace(fC, &opentype.FaceOptions{Size: 16 * z, DPI: 72})
+			fKI, errKI := opentype.NewFace(fK, &opentype.FaceOptions{Size: 16 * z, DPI: 72})
+			
+			if errPR != nil || errCR != nil || errKR != nil || errPB != nil || errCB != nil || errKB != nil || errPI != nil || errCI != nil || errKI != nil {
+				logMsg(fmt.Sprintf("Font Face Error: PR:%v, CR:%v, KR:%v, PB:%v, CB:%v, KB:%v, PI:%v, CI:%v, KI:%v", errPR, errCR, errKR, errPB, errCB, errKB, errPI, errCI, errKI))
+			}
+			
 			var drawCons func(n *Node); drawCons = func(n *Node) {
 				if n == nil || n.Collapsed { return }; for _, c := range n.Children {
 					dir := 1.0; if c.X < n.X { dir = -1.0 }; psX, psY := (float64(n.X+float32(dir)*n.WidthWithIcons()/2)-float64(minX)+margin)*z, (float64(n.Y)-float64(minY)+margin)*z; peX, peY := (float64(c.X-float32(dir)*c.WidthWithIcons()/2)-float64(minX)+margin)*z, (float64(c.Y)-float64(minY)+margin)*z; rh := int(float64(e.lineThickness) * z); if rh < 1 { rh = 1 }; halo := rh + int(3*z)
@@ -694,9 +794,9 @@ func (e *editorApp) exportPNG() {
 				rect := image.Rect(int(bX), int(bY), int(bX+bW), int(bY+bH)); draw.Draw(img, rect, &image.Uniform{color.White}, image.Point{}, draw.Src)
 				bw := int(float64(e.lineThickness) * z); if bw < 1 { bw = 1 }; nC := n.Color; if nC == nil { nC = theme.PrimaryColor() }
 				draw.Draw(img, image.Rect(rect.Min.X, rect.Min.Y, rect.Max.X, rect.Min.Y+bw), &image.Uniform{nC}, image.Point{}, draw.Src); draw.Draw(img, image.Rect(rect.Min.X, rect.Max.Y-bw, rect.Max.X, rect.Max.Y), &image.Uniform{nC}, image.Point{}, draw.Src); draw.Draw(img, image.Rect(rect.Min.X, rect.Min.Y, rect.Min.X+bw, rect.Max.Y), &image.Uniform{nC}, image.Point{}, draw.Src); draw.Draw(img, image.Rect(rect.Max.X-bw, rect.Min.Y, rect.Max.X, rect.Max.Y), &image.Uniform{nC}, image.Point{}, draw.Src)
-				lH, sY, fPF, fFF := 20.0*z, bY+(bH-float64(len(n.Lines))*20.0*z)/2+20.0*z*0.75, fPR, fFR; if n.Level == 0 { fPF, fFF = fPB, fFB }
-				for i, txt := range n.Lines { tw := measureCompositeString(txt, fPF, fFF); drawCompositeString(img, txt, bX+float64(n.Width)*z/2-tw/2, sY+float64(i)*lH, fPF, fFF, color.Black) }
-				if len(n.Children) > 0 { iC, iCol := "-", color.NRGBA{R: 200, G: 50, B: 50, A: 255}; if n.Collapsed { iC, iCol = "+", color.NRGBA{R: 50, G: 200, B: 50, A: 255} }; tw := measureCompositeString(iC, fPI, fFI); drawCompositeString(img, iC, bX+bW-30.0*z*0.7-tw/2, bY+bH/2+lH*0.25, fPI, fFI, iCol) }
+				lH, sY, fPF, fCF, fKF := 20.0*z, bY+(bH-float64(len(n.Lines))*20.0*z)/2+20.0*z*0.75, fPR, fCR, fKR; if n.Level == 0 { fPF, fCF, fKF = fPB, fCB, fKB }
+				for i, txt := range n.Lines { tw := measureCompositeString(txt, fPF, fCF, fKF); drawCompositeString(img, txt, bX+float64(n.Width)*z/2-tw/2, sY+float64(i)*lH, fPF, fCF, fKF, color.Black) }
+				if len(n.Children) > 0 { iC, iCol := "-", color.NRGBA{R: 200, G: 50, B: 50, A: 255}; if n.Collapsed { iC, iCol = "+", color.NRGBA{R: 50, G: 200, B: 50, A: 255} }; tw := measureCompositeString(iC, fPI, fCI, fKI); drawCompositeString(img, iC, bX+bW-30.0*z*0.7-tw/2, bY+bH/2+lH*0.25, fPI, fCI, fKI, iCol) }
 				if !n.Collapsed { for _, c := range n.Children { drawNode(c) } }
 			}
 			drawCons(e.rootNode); drawNode(e.rootNode); png.Encode(w, img)
@@ -718,6 +818,15 @@ func newToolBtn(i fyne.Resource, tip string, e *editorApp, tap func()) *tooltipB
 type miniMapLayout struct{}
 func (l *miniMapLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) { if len(objects) == 0 { return }; mW, mH := size.Width*0.10, size.Height*0.10; if mW < 100 { mW = 100 }; if mH < 100 { mH = 100 }; objects[0].Resize(fyne.NewSize(mW, mH)); objects[0].Move(fyne.NewPos(size.Width-mW-10, size.Height-mH-10)) }
 func (l *miniMapLayout) MinSize(_ []fyne.CanvasObject) fyne.Size { return fyne.NewSize(100, 100) }
+type customTheme struct{}
+func (m customTheme) Color(n fyne.ThemeColorName, v fyne.ThemeVariant) color.Color { return theme.DefaultTheme().Color(n, v) }
+func (m customTheme) Icon(n fyne.ThemeIconName) fyne.Resource { return theme.DefaultTheme().Icon(n) }
+func (m customTheme) Font(s fyne.TextStyle) fyne.Resource {
+	if s.Monospace { return theme.DefaultTheme().Font(s) }
+	return fyne.NewStaticResource("CJKFont", getFallbackFontDataTTF())
+}
+func (m customTheme) Size(n fyne.ThemeSizeName) float32 { return theme.DefaultTheme().Size(n) }
+
 func main() {
 	if os.Getenv("GOMAXPROCS") == "" {
 		n := runtime.NumCPU() - 2
@@ -726,7 +835,9 @@ func main() {
 	}
 	logMsg(fmt.Sprintf("GOMAXPROCS: %d", runtime.GOMAXPROCS(0)))
 
-	logMsg("Initializing GUI application..."); a := app.NewWithID("com.mermaid.md.gui"); w := a.NewWindow("Mermaid Mindmap Editor")
+	logMsg("Initializing GUI application..."); a := app.NewWithID("com.mermaid.md.gui")
+	a.Settings().SetTheme(&customTheme{})
+	w := a.NewWindow("Mermaid Mindmap Editor")
 	e := &editorApp{mainApp: a, window: w, zoomScale: 1.0, collapsedNodes: make(map[string]bool), layoutMode: "balanced", lineThickness: 2, nodePadding: 10}
 	e.entry, e.renderArea, e.interactiveBG, e.scroll = widget.NewMultiLineEntry(), container.NewWithoutLayout(), newInteractiveBackground(e), container.NewScroll(nil); e.canvasContainer = container.New(&canvasLayout{app: e}, e.interactiveBG, e.renderArea); e.scroll.Content = e.canvasContainer; e.statusLabel, e.miniMap = widget.NewLabel("Ready"), newMiniMap(e); e.miniContainer = container.New(&miniMapLayout{}, e.miniMap)
 	e.layoutSelect = widget.NewSelect([]string{"Mindmap (Balanced)", "Mindmap (Fishbone)", "Logic (Left)", "Logic (Right)"}, func(s string) { e.setLayout(s) }); e.layoutSelect.SetSelected("Mindmap (Balanced)")
