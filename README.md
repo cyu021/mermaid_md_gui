@@ -30,17 +30,23 @@ Supported Features
    - Auto-Centering: One-click "Refresh & Center" to reset the view.
 
 5. Export Options:
-   - Export as PNG: High-quality image export with a print-friendly white background (saves ink).
+   - Export as PNG: High-quality image export with a print-friendly white background.
 
-6. Unicode & CJK Support:
-   - Built-in font fallback for Chinese, Japanese, and Korean characters.
+6. Enhanced Unicode & CJK Support:
+   - Portability: Now uses bundled Noto Sans CJK KR fonts (no system fonts required).
+   - Fixed Symbol Mapping: Backslash (\) is correctly rendered in both GUI and exported images (preventing legacy Won symbol ₩ mapping).
+   - Improved Layout: Optimized vertical alignment and node padding for tall Asian characters.
+
+7. Smart File Handling:
+   - Consistent Paths: File dialogs ("Open", "Save As", "Export") now default to the application's directory.
+   - Path Sanitization: Automatic conversion of path separators and Won symbols for consistent display across all platforms.
 
 
 How to Use
 ----------
 
 1. Launching the Application:
-   - Run via Go: `go run main.go`
+   - Run via Go: `go run main.go bundled.go`
    - Or execute the compiled binary: `./mermaid-md-gui` (Linux) or `mermaid-md-gui.exe` (Windows).
 
 2. Editing the Mindmap:
@@ -65,7 +71,7 @@ How to Use
    - Refresh: Reset the canvas position and re-calculate the layout.
 
 4. Exporting:
-   - Go to "File" -> "Export as PNG" to save your diagram for presentations or printing.
+   - Go to "File" -> "Export as PNG" to save your diagram.
 
 5. UI Scaling (FYNE_SCALE):
    If the automatic scaling detection does not suit your needs, you can manually override the interface size using the `FYNE_SCALE` environment variable.
@@ -91,42 +97,45 @@ System Requirements
 -------------------
 - Operating System: Windows, Linux, or macOS.
 - Dependencies: Requires a C compiler (gcc) for Fyne/Go compilation.
+- Font Prerequisites: `NotoSansCJKkr-Regular.otf` and `NotoSansCJKkr-Bold.otf` (Required by `bundled.go`).
+  Retrieve them via:
+  ```bash
+  wget https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Korean/NotoSansCJKkr-Bold.otf
+  wget https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Korean/NotoSansCJKkr-Regular.otf
+  ```
 
 Build Instructions
 ------------------
 
+IMPORTANT: Always include `bundled.go` in the build command to ensure font support.
+
 ### 1. Linux (WSL/Native)
    - Prerequisites: `gcc`, `libgl1-mesa-dev`, `xorg-dev`.
-   - Command (Optimized for resource management):
+   - Command:
      ```bash
      NPROC=$(nproc); GOMAX=$((NPROC > 2 ? NPROC - 2 : 1)); \
-     go build -v -p $GOMAX -o mermaid-md-gui main.go
+     go build -v -p $GOMAX -o mermaid-md-gui main.go bundled.go
      ```
 
 ### 2. Windows (Native)
    - Prerequisites: `gcc` (MinGW-w64).
    - Command:
      ```cmd
-     go build -v -ldflags "-s -w -H windowsgui" -o mermaid-md-gui.exe main.go
+     go build -v -ldflags "-s -w -H windowsgui" -o mermaid-md-gui.exe main.go bundled.go
      ```
 
 ### 3. macOS
    - Prerequisites: `Xcode` or Command Line Tools.
-   - Command (Intel):
+   - Command (Intel/Apple Silicon):
      ```bash
-     go build -v -o mermaid-md-gui-mac main.go
-     ```
-   - Command (Apple Silicon):
-     ```bash
-     GOARCH=arm64 go build -v -o mermaid-md-gui-mac-arm main.go
+     go build -v -o mermaid-md-gui-mac main.go bundled.go
      ```
 
 ### 4. Windows (Cross-Compilation from WSL/Linux)
    - Prerequisite: `x86_64-w64-mingw32-gcc`.
-   - Command (Optimized and Static):
+   - Command:
      ```bash
-     NPROC=$(nproc); GOMAX=$((NPROC > 2 ? NPROC - 2 : 1)); \
      GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc \
-     go build -v -p $GOMAX -ldflags="-s -w -extldflags=-static -H=windowsgui" \
-     -o mermaid-md-gui.exe main.go
+     go build -v -ldflags="-s -w -extldflags=-static -H=windowsgui" \
+     -o mermaid-md-gui.exe main.go bundled.go
      ```
