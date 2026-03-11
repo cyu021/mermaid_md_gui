@@ -714,65 +714,142 @@ func (e *editorApp) setDialogToExeDir(d *dialog.FileDialog) {
 	lister, err := storage.ListerForURI(uri)
 	if err == nil { d.SetLocation(lister) }
 }
-func (e *editorApp) exportPNG() {
-	d := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) {
-		if err != nil || w == nil { return }; go func() {
-			defer w.Close(); var minX, minY, maxX, maxY float32 = 4000, 4000, 0, 0; getMindmapBounds(e.rootNode, &minX, &minY, &maxX, &maxY)
-			z, margin := float64(e.zoomScale), 50.0; if minX > maxX { return }; outW, outH := int((float64(maxX-minX)+margin*2)*z), int((float64(maxY-minY)+margin*2)*z)
-			img, bgCol := image.NewRGBA(image.Rect(0, 0, outW, outH)), color.White; draw.Draw(img, img.Bounds(), &image.Uniform{bgCol}, image.Point{}, draw.Src)
-			fP, fC, fK := getOpentypeFonts()
-			fPR, errPR := opentype.NewFace(fP, &opentype.FaceOptions{Size: 13 * z, DPI: 72})
-			fCR, errCR := opentype.NewFace(fC, &opentype.FaceOptions{Size: 13 * z, DPI: 72})
-			fKR, errKR := opentype.NewFace(fK, &opentype.FaceOptions{Size: 13 * z, DPI: 72})
-			fPB, errPB := opentype.NewFace(fP, &opentype.FaceOptions{Size: 15 * z, DPI: 72})
-			fCB, errCB := opentype.NewFace(fC, &opentype.FaceOptions{Size: 15 * z, DPI: 72})
-			fKB, errKB := opentype.NewFace(fK, &opentype.FaceOptions{Size: 15 * z, DPI: 72})
-			fPI, errPI := opentype.NewFace(fP, &opentype.FaceOptions{Size: 16 * z, DPI: 72})
-			fCI, errCI := opentype.NewFace(fC, &opentype.FaceOptions{Size: 16 * z, DPI: 72})
-			fKI, errKI := opentype.NewFace(fK, &opentype.FaceOptions{Size: 16 * z, DPI: 72})
-			
-			if errPR != nil || errCR != nil || errKR != nil || errPB != nil || errCB != nil || errKB != nil || errPI != nil || errCI != nil || errKI != nil {
-				logMsg(fmt.Sprintf("Font Face Error: PR:%v, CR:%v, KR:%v, PB:%v, CB:%v, KB:%v, PI:%v, CI:%v, KI:%v", errPR, errCR, errKR, errPB, errCB, errKB, errPI, errCI, errKI))
-			}
-			
-			var drawCons func(n *Node); drawCons = func(n *Node) {
-				if n == nil || n.Collapsed { return }; for _, c := range n.Children {
-					dir := 1.0; if c.X < n.X { dir = -1.0 }; psX, psY := (float64(n.X+float32(dir)*n.WidthWithIcons()/2)-float64(minX)+margin)*z, (float64(n.Y)-float64(minY)+margin)*z; peX, peY := (float64(c.X-float32(dir)*c.WidthWithIcons()/2)-float64(minX)+margin)*z, (float64(c.Y)-float64(minY)+margin)*z; rh := int(float64(e.lineThickness) * z); if rh < 1 { rh = 1 }; halo := rh + int(3*z)
-					if e.layoutMode == "fishbone" && n.Level == 0 {
-						sX := (float64(c.X-float32(dir)*100)-float64(minX)+margin)*z; peX = (float64(c.X)-float64(minX)+margin)*z; if c.Y < n.Y { peY = (float64(c.Y+c.Height/2)-float64(minY)+margin)*z } else { peY = (float64(c.Y-c.Height/2)-float64(minY)+margin)*z }
-						rx, ry, sx := int(psX), int(psY), int(sX); sRH, sR := image.Rect(rx, ry-halo/2, sx, ry+halo/2), image.Rect(rx, ry-rh/2, sx, ry+rh/2); if dir < 0 { sRH, sR = image.Rect(sx, ry-halo/2, rx, ry+halo/2), image.Rect(sx, ry-rh/2, rx, ry+halo/2) }
-						draw.Draw(img, sRH, &image.Uniform{bgCol}, image.Point{}, draw.Src); draw.Draw(img, sR, &image.Uniform{c.Color}, image.Point{}, draw.Src)
-						if e.routeStyle == "Oval" { drawOval(img, sX, psY, peX, peY, halo, bgCol); drawOval(img, sX, psY, peX, peY, rh, c.Color) } else if e.routeStyle == "Orthogonal" { drawLine(img, int(sX), int(psY), int(peX), int(psY), halo, bgCol); drawLine(img, int(peX), int(psY), int(peX), int(peY), halo, bgCol); drawLine(img, int(sX), int(psY), int(peX), int(psY), rh, c.Color); drawLine(img, int(peX), int(psY), int(peX), int(peY), rh, c.Color) } else { drawBezier(img, sX, psY, peX, peY, peX, psY, peX, psY, halo, bgCol); drawBezier(img, sX, psY, peX, peY, peX, psY, peX, psY, rh, c.Color) }
-					} else {
-						if e.routeStyle == "Oval" {
-							mX, mY := (psX+peX)/2, (psY+peY)/2; drawOval(img, psX, psY, mX, mY, halo, bgCol); drawOval(img, psX, psY, mX, mY, rh, c.Color); dx2, dy2, px2, py2 := peX-mX, peY-mY, mX, mY
-							for i := 1; i <= 25; i++ { t := float64(i) / 25.0; a := t * math.Pi / 2.0; nx, ny := mX+dx2*(1.0-math.Cos(a)), mY+dy2*math.Sin(a); drawLine(img, int(px2), int(py2), int(nx), int(ny), halo, bgCol); drawLine(img, int(px2), int(py2), int(nx), int(ny), rh, c.Color); px2, py2 = nx, ny }
-						} else if e.routeStyle == "Orthogonal" {
-							jx := psX + dir*float64(horizontalGap)*0.5*z; drawLine(img, int(psX), int(psY), int(jx), int(psY), halo, bgCol); drawLine(img, int(jx), int(psY), int(jx), int(peY), halo, bgCol); drawLine(img, int(jx), int(peY), int(peX), int(peY), halo, bgCol); drawLine(img, int(psX), int(psY), int(jx), int(psY), rh, c.Color); drawLine(img, int(jx), int(psY), int(jx), int(peY), rh, c.Color); drawLine(img, int(jx), int(peY), int(peX), int(peY), rh, c.Color)
-						} else { cp1x, cp2x := psX+dir*float64(horizontalGap)*0.5*z, peX-dir*float64(horizontalGap)*0.5*z; drawBezier(img, psX, psY, peX, peY, cp1x, psY, cp2x, peY, halo, bgCol); drawBezier(img, psX, psY, peX, peY, cp1x, psY, cp2x, peY, rh, c.Color) }
-					}
-					drawCons(c)
+func (e *editorApp) showPathEntryDialog(title, defaultFile string, isSave bool, onConfirm func(string)) {
+	pathEntry := widget.NewEntry()
+	pathEntry.SetPlaceHolder("Enter absolute path here...")
+	exe, _ := os.Executable()
+	if defaultFile != "" {
+		pathEntry.SetText(filepath.Join(filepath.Dir(exe), defaultFile))
+	} else {
+		pathEntry.SetText(filepath.Dir(exe))
+	}
+
+	browseBtn := widget.NewButtonWithIcon("Browse...", theme.FolderOpenIcon(), func() {
+		if isSave {
+			d := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) {
+				if err == nil && w != nil {
+					p := filepath.FromSlash(w.URI().Path())
+					pathEntry.SetText(strings.ReplaceAll(p, "₩", "\\"))
+					w.Close()
 				}
-			}; var drawNode func(n *Node); drawNode = func(n *Node) {
-				if n == nil { return }; bX, bY, bW, bH := (float64(n.X-n.WidthWithIcons()/2-minX)+margin)*z, (float64(n.Y-n.Height/2-minY)+margin*z), float64(n.WidthWithIcons())*z, float64(n.Height)*z
-				rect := image.Rect(int(bX), int(bY), int(bX+bW), int(bY+bH)); draw.Draw(img, rect, &image.Uniform{color.White}, image.Point{}, draw.Src)
-				bw := int(float64(e.lineThickness) * z); if bw < 1 { bw = 1 }; nC := n.Color; if nC == nil { nC = theme.PrimaryColor() }
-				draw.Draw(img, image.Rect(rect.Min.X, rect.Min.Y, rect.Max.X, rect.Min.Y+bw), &image.Uniform{nC}, image.Point{}, draw.Src); draw.Draw(img, image.Rect(rect.Min.X, rect.Max.Y-bw, rect.Max.X, rect.Max.Y), &image.Uniform{nC}, image.Point{}, draw.Src); draw.Draw(img, image.Rect(rect.Min.X, rect.Min.Y, rect.Min.X+bw, rect.Max.Y), &image.Uniform{nC}, image.Point{}, draw.Src); draw.Draw(img, image.Rect(rect.Max.X-bw, rect.Min.Y, rect.Max.X, rect.Max.Y), &image.Uniform{nC}, image.Point{}, draw.Src)
-				lH, sY, fPF, fCF, fKF := 20.0*z, bY+(bH-float64(len(n.Lines))*20.0*z)/2+20.0*z*0.75, fPR, fCR, fKR; if n.Level == 0 { fPF, fCF, fKF = fPB, fCB, fKB }
-				for i, txt := range n.Lines { tw := measureCompositeString(txt, fPF, fCF, fKF); drawCompositeString(img, txt, bX+float64(n.Width)*z/2-tw/2, sY+float64(i)*lH, fPF, fCF, fKF, color.Black) }
-				if len(n.Children) > 0 { iC, iCol := "-", color.NRGBA{R: 200, G: 50, B: 50, A: 255}; if n.Collapsed { iC, iCol = "+", color.NRGBA{R: 50, G: 200, B: 50, A: 255} }; tw := measureCompositeString(iC, fPI, fCI, fKI); drawCompositeString(img, iC, bX+bW-30.0*z*0.7-tw/2, bY+bH/2+lH*0.25, fPI, fCI, fKI, iCol) }
-				if !n.Collapsed { for _, c := range n.Children { drawNode(c) } }
+			}, e.window)
+			if defaultFile != "" { d.SetFileName(defaultFile) }
+			e.setDialogToExeDir(d)
+			d.Show()
+		} else {
+			d := dialog.NewFileOpen(func(r fyne.URIReadCloser, err error) {
+				if err == nil && r != nil {
+					p := filepath.FromSlash(r.URI().Path())
+					pathEntry.SetText(strings.ReplaceAll(p, "₩", "\\"))
+					r.Close()
+				}
+			}, e.window)
+			e.setDialogToExeDir(d)
+			d.Show()
+		}
+	})
+
+	content := container.NewVBox(
+		widget.NewLabel("Enter absolute path or click Browse:"),
+		pathEntry,
+		browseBtn,
+	)
+
+	d := dialog.NewCustomConfirm(title, "OK", "Cancel", content, func(ok bool) {
+		if ok && pathEntry.Text != "" {
+			onConfirm(strings.ReplaceAll(pathEntry.Text, "₩", "\\"))
+		}
+	}, e.window)
+	d.Resize(fyne.NewSize(600, 250))
+	d.Show()
+}
+
+func (e *editorApp) performExportPNG(w io.WriteCloser) {
+	go func() {
+		defer w.Close(); var minX, minY, maxX, maxY float32 = 4000, 4000, 0, 0; getMindmapBounds(e.rootNode, &minX, &minY, &maxX, &maxY)
+		z, margin := float64(e.zoomScale), 50.0; if minX > maxX { return }; outW, outH := int((float64(maxX-minX)+margin*2)*z), int((float64(maxY-minY)+margin*2)*z)
+		img, bgCol := image.NewRGBA(image.Rect(0, 0, outW, outH)), color.White; draw.Draw(img, img.Bounds(), &image.Uniform{bgCol}, image.Point{}, draw.Src)
+		fP, fC, fK := getOpentypeFonts()
+		fPR, errPR := opentype.NewFace(fP, &opentype.FaceOptions{Size: 13 * z, DPI: 72})
+		fCR, errCR := opentype.NewFace(fC, &opentype.FaceOptions{Size: 13 * z, DPI: 72})
+		fKR, errKR := opentype.NewFace(fK, &opentype.FaceOptions{Size: 13 * z, DPI: 72})
+		fPB, errPB := opentype.NewFace(fP, &opentype.FaceOptions{Size: 15 * z, DPI: 72})
+		fCB, errCB := opentype.NewFace(fC, &opentype.FaceOptions{Size: 15 * z, DPI: 72})
+		fKB, errKB := opentype.NewFace(fK, &opentype.FaceOptions{Size: 15 * z, DPI: 72})
+		fPI, errPI := opentype.NewFace(fP, &opentype.FaceOptions{Size: 16 * z, DPI: 72})
+		fCI, errCI := opentype.NewFace(fC, &opentype.FaceOptions{Size: 16 * z, DPI: 72})
+		fKI, errKI := opentype.NewFace(fK, &opentype.FaceOptions{Size: 16 * z, DPI: 72})
+		
+		if errPR != nil || errCR != nil || errKR != nil || errPB != nil || errCB != nil || errKB != nil || errPI != nil || errCI != nil || errKI != nil {
+			logMsg(fmt.Sprintf("Font Face Error: PR:%v, CR:%v, KR:%v, PB:%v, CB:%v, KB:%v, PI:%v, CI:%v, KI:%v", errPR, errCR, errKR, errPB, errCB, errKB, errPI, errCI, errKI))
+		}
+		
+		var drawCons func(n *Node); drawCons = func(n *Node) {
+			if n == nil || n.Collapsed { return }; for _, c := range n.Children {
+				dir := 1.0; if c.X < n.X { dir = -1.0 }; psX, psY := (float64(n.X+float32(dir)*n.WidthWithIcons()/2)-float64(minX)+margin)*z, (float64(n.Y)-float64(minY)+margin)*z; peX, peY := (float64(c.X-float32(dir)*c.WidthWithIcons()/2)-float64(minX)+margin)*z, (float64(c.Y)-float64(minY)+margin)*z; rh := int(float64(e.lineThickness) * z); if rh < 1 { rh = 1 }; halo := rh + int(3*z)
+				if e.layoutMode == "fishbone" && n.Level == 0 {
+					sX := (float64(c.X-float32(dir)*100)-float64(minX)+margin)*z; peX = (float64(c.X)-float64(minX)+margin)*z; if c.Y < n.Y { peY = (float64(c.Y+c.Height/2)-float64(minY)+margin)*z } else { peY = (float64(c.Y-c.Height/2)-float64(minY)+margin)*z }
+					rx, ry, sx := int(psX), int(psY), int(sX); sRH, sR := image.Rect(rx, ry-halo/2, sx, ry+halo/2), image.Rect(rx, ry-rh/2, sx, ry+rh/2); if dir < 0 { sRH, sR = image.Rect(sx, ry-halo/2, rx, ry+halo/2), image.Rect(sx, ry-rh/2, rx, ry+halo/2) }
+					draw.Draw(img, sRH, &image.Uniform{bgCol}, image.Point{}, draw.Src); draw.Draw(img, sR, &image.Uniform{c.Color}, image.Point{}, draw.Src)
+					if e.routeStyle == "Oval" { drawOval(img, sX, psY, peX, peY, halo, bgCol); drawOval(img, sX, psY, peX, peY, rh, c.Color) } else if e.routeStyle == "Orthogonal" { drawLine(img, int(sX), int(psY), int(peX), int(psY), halo, bgCol); drawLine(img, int(peX), int(psY), int(peX), int(peY), halo, bgCol); drawLine(img, int(sX), int(psY), int(peX), int(psY), rh, c.Color); drawLine(img, int(peX), int(psY), int(peX), int(peY), rh, c.Color) } else { drawBezier(img, sX, psY, peX, peY, peX, psY, peX, psY, halo, bgCol); drawBezier(img, sX, psY, peX, peY, peX, psY, peX, psY, rh, c.Color) }
+				} else {
+					if e.routeStyle == "Oval" {
+						mX, mY := (psX+peX)/2, (psY+peY)/2; drawOval(img, psX, psY, mX, mY, halo, bgCol); drawOval(img, psX, psY, mX, mY, rh, c.Color); dx2, dy2, px2, py2 := peX-mX, peY-mY, mX, mY
+						for i := 1; i <= 25; i++ { t := float64(i) / 25.0; a := t * math.Pi / 2.0; nx, ny := mX+dx2*(1.0-math.Cos(a)), mY+dy2*math.Sin(a); drawLine(img, int(px2), int(py2), int(nx), int(ny), halo, bgCol); drawLine(img, int(px2), int(py2), int(nx), int(ny), rh, c.Color); px2, py2 = nx, ny }
+					} else if e.routeStyle == "Orthogonal" {
+						jx := psX + dir*float64(horizontalGap)*0.5*z; drawLine(img, int(psX), int(psY), int(jx), int(psY), halo, bgCol); drawLine(img, int(jx), int(psY), int(jx), int(peY), halo, bgCol); drawLine(img, int(jx), int(peY), int(peX), int(peY), halo, bgCol); drawLine(img, int(psX), int(psY), int(jx), int(psY), rh, c.Color); drawLine(img, int(jx), int(psY), int(jx), int(peY), rh, c.Color); drawLine(img, int(jx), int(peY), int(peX), int(peY), rh, c.Color)
+					} else { cp1x, cp2x := psX+dir*float64(horizontalGap)*0.5*z, peX-dir*float64(horizontalGap)*0.5*z; drawBezier(img, psX, psY, peX, peY, cp1x, psY, cp2x, peY, halo, bgCol); drawBezier(img, psX, psY, peX, peY, cp1x, psY, cp2x, peY, rh, c.Color) }
+				}
+				drawCons(c)
 			}
-			drawCons(e.rootNode); drawNode(e.rootNode); png.Encode(w, img)
-		}()
-	}, e.window); d.SetFileName("mindmap.png"); e.setDialogToExeDir(d); d.Show()
+		}; var drawNode func(n *Node); drawNode = func(n *Node) {
+			if n == nil { return }; bX, bY, bW, bH := (float64(n.X-n.WidthWithIcons()/2-minX)+margin)*z, (float64(n.Y-n.Height/2-minY)+margin*z), float64(n.WidthWithIcons())*z, float64(n.Height)*z
+			rect := image.Rect(int(bX), int(bY), int(bX+bW), int(bY+bH)); draw.Draw(img, rect, &image.Uniform{color.White}, image.Point{}, draw.Src)
+			bw := int(float64(e.lineThickness) * z); if bw < 1 { bw = 1 }; nC := n.Color; if nC == nil { nC = theme.PrimaryColor() }
+			draw.Draw(img, image.Rect(rect.Min.X, rect.Min.Y, rect.Max.X, rect.Min.Y+bw), &image.Uniform{nC}, image.Point{}, draw.Src); draw.Draw(img, image.Rect(rect.Min.X, rect.Max.Y-bw, rect.Max.X, rect.Max.Y), &image.Uniform{nC}, image.Point{}, draw.Src); draw.Draw(img, image.Rect(rect.Min.X, rect.Min.Y, rect.Min.X+bw, rect.Max.Y), &image.Uniform{nC}, image.Point{}, draw.Src); draw.Draw(img, image.Rect(rect.Max.X-bw, rect.Min.Y, rect.Max.X, rect.Max.Y), &image.Uniform{nC}, image.Point{}, draw.Src)
+			lH, sY, fPF, fCF, fKF := 20.0*z, bY+(bH-float64(len(n.Lines))*20.0*z)/2+20.0*z*0.75, fPR, fCR, fKR; if n.Level == 0 { fPF, fCF, fKF = fPB, fCB, fKB }
+			for i, txt := range n.Lines { tw := measureCompositeString(txt, fPF, fCF, fKF); drawCompositeString(img, txt, bX+float64(n.Width)*z/2-tw/2, sY+float64(i)*lH, fPF, fCF, fKF, color.Black) }
+			if len(n.Children) > 0 { iC, iCol := "-", color.NRGBA{R: 200, G: 50, B: 50, A: 255}; if n.Collapsed { iC, iCol = "+", color.NRGBA{R: 50, G: 200, B: 50, A: 255} }; tw := measureCompositeString(iC, fPI, fCI, fKI); drawCompositeString(img, iC, bX+bW-30.0*z*0.7-tw/2, bY+bH/2+lH*0.25, fPI, fCI, fKI, iCol) }
+			if !n.Collapsed { for _, c := range n.Children { drawNode(c) } }
+		}
+		drawCons(e.rootNode); drawNode(e.rootNode); png.Encode(w, img)
+	}()
+}
+
+func (e *editorApp) exportPNG() {
+	e.showPathEntryDialog("Export as PNG", "mindmap.png", true, func(path string) {
+		uri := storage.NewFileURI(path)
+		w, err := storage.Writer(uri)
+		if err != nil { dialog.ShowError(err, e.window); return }
+		e.performExportPNG(w)
+	})
 }
 func (e *editorApp) openFile() {
-	d := dialog.NewFileOpen(func(r fyne.URIReadCloser, err error) { if err != nil || r == nil { return }; data, _ := io.ReadAll(r); e.entry.SetText(string(data)); e.currentFile = r.URI(); t := "Mermaid Mindmap Editor - " + filepath.FromSlash(e.currentFile.Path()); e.window.SetTitle(strings.ReplaceAll(t, "₩", "\\")); e.handleRefresh(); r.Close() }, e.window); e.setDialogToExeDir(d); d.Show()
+	e.showPathEntryDialog("Open File", "", false, func(path string) {
+		uri := storage.NewFileURI(path)
+		r, err := storage.Reader(uri)
+		if err != nil { dialog.ShowError(err, e.window); return }
+		defer r.Close()
+		data, _ := io.ReadAll(r)
+		e.entry.SetText(string(data))
+		e.currentFile = uri
+		t := "Mermaid Mindmap Editor - " + filepath.FromSlash(e.currentFile.Path())
+		e.window.SetTitle(strings.ReplaceAll(t, "₩", "\\"))
+		e.handleRefresh()
+	})
 }
 func (e *editorApp) saveFile() { if e.currentFile == nil { e.saveAsFile(); return }; w, _ := storage.Writer(e.currentFile); w.Write([]byte(e.entry.Text)); w.Close() }
 func (e *editorApp) saveAsFile() {
-	d := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) { if err != nil || w == nil { return }; w.Write([]byte(e.entry.Text)); e.currentFile = w.URI(); t := "Mermaid Mindmap Editor - " + filepath.FromSlash(e.currentFile.Path()); e.window.SetTitle(strings.ReplaceAll(t, "₩", "\\")); w.Close() }, e.window); e.setDialogToExeDir(d); d.Show()
+	e.showPathEntryDialog("Save As...", "mindmap.md", true, func(path string) {
+		uri := storage.NewFileURI(path)
+		w, err := storage.Writer(uri)
+		if err != nil { dialog.ShowError(err, e.window); return }
+		defer w.Close()
+		w.Write([]byte(e.entry.Text))
+		e.currentFile = uri
+		t := "Mermaid Mindmap Editor - " + filepath.FromSlash(e.currentFile.Path())
+		e.window.SetTitle(strings.ReplaceAll(t, "₩", "\\"))
+	})
 }
 type tooltipButton struct { widget.Button; tip string; app *editorApp }
 func (t *tooltipButton) Tooltip() string { return t.tip }
