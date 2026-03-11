@@ -880,11 +880,13 @@ func main() {
 			if calculatedScale < 0.1 { calculatedScale = 0.1 }
 			
 			e.detectedOSScale = osScale
-			logMsg(fmt.Sprintf("Cross-Platform Scaling - OS: %s, Detected OS Scale: %.2f, Applying zoom: %.2f", runtime.GOOS, osScale, calculatedScale))
+			logMsg(fmt.Sprintf("Cross-Platform Scaling - OS: %s, Detected OS Scale: %.2f, Formula would suggest: %.2f", runtime.GOOS, osScale, calculatedScale))
 			
 			// Fyne UI updates MUST happen on the main thread
 			fyne.Do(func() {
-				e.zoomScale = float32(calculatedScale)
+				// Initialize to 1.0 to ensure consistent size across displays, 
+				// letting Fyne's logical scaling handle the rest.
+				e.zoomScale = 1.0 
 				if e.window != nil && e.window.Content() != nil {
 					e.window.Content().Refresh()
 					e.handleRefresh()
