@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -750,6 +751,14 @@ func drawBezier(img draw.Image, x1, y1, x2, y2, cp1x, cp1y, cp2x, cp2y float64, 
 func drawOval(img draw.Image, x1, y1, x2, y2 float64, thickness int, col color.Color) {
 	dx, dy, px, py := x2-x1, y2-y1, x1, y1; for i := 1; i <= 50; i++ { t := float64(i) / 50.0; a := t * math.Pi / 2.0; nx, ny := x1+dx*math.Sin(a), y1+dy*(1.0-math.Cos(a)); drawLine(img, int(px), int(py), int(nx), int(ny), thickness, col); px, py = nx, ny }
 }
+func (e *editorApp) setDialogToExeDir(d *dialog.FileDialog) {
+	exe, err := os.Executable()
+	if err != nil { return }
+	dir := filepath.Dir(exe)
+	uri := storage.NewFileURI(dir)
+	lister, err := storage.ListerForURI(uri)
+	if err == nil { d.SetLocation(lister) }
+}
 func (e *editorApp) exportPNG() {
 	d := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) {
 		if err != nil || w == nil { return }; go func() {
@@ -801,14 +810,14 @@ func (e *editorApp) exportPNG() {
 			}
 			drawCons(e.rootNode); drawNode(e.rootNode); png.Encode(w, img)
 		}()
-	}, e.window); d.SetFileName("mindmap.png"); d.Show()
+	}, e.window); d.SetFileName("mindmap.png"); e.setDialogToExeDir(d); d.Show()
 }
 func (e *editorApp) openFile() {
-	d := dialog.NewFileOpen(func(r fyne.URIReadCloser, err error) { if err != nil || r == nil { return }; data, _ := io.ReadAll(r); e.entry.SetText(string(data)); e.currentFile = r.URI(); e.window.SetTitle("Mermaid Mindmap Editor - " + e.currentFile.Name()); e.handleRefresh(); r.Close() }, e.window); d.Show()
+	d := dialog.NewFileOpen(func(r fyne.URIReadCloser, err error) { if err != nil || r == nil { return }; data, _ := io.ReadAll(r); e.entry.SetText(string(data)); e.currentFile = r.URI(); e.window.SetTitle("Mermaid Mindmap Editor - " + e.currentFile.Name()); e.handleRefresh(); r.Close() }, e.window); e.setDialogToExeDir(d); d.Show()
 }
 func (e *editorApp) saveFile() { if e.currentFile == nil { e.saveAsFile(); return }; w, _ := storage.Writer(e.currentFile); w.Write([]byte(e.entry.Text)); w.Close() }
 func (e *editorApp) saveAsFile() {
-	d := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) { if err != nil || w == nil { return }; w.Write([]byte(e.entry.Text)); e.currentFile = w.URI(); e.window.SetTitle("Mermaid Mindmap Editor - " + e.currentFile.Name()); w.Close() }, e.window); d.Show()
+	d := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) { if err != nil || w == nil { return }; w.Write([]byte(e.entry.Text)); e.currentFile = w.URI(); e.window.SetTitle("Mermaid Mindmap Editor - " + e.currentFile.Name()); w.Close() }, e.window); e.setDialogToExeDir(d); d.Show()
 }
 type tooltipButton struct { widget.Button; tip string; app *editorApp }
 func (t *tooltipButton) Tooltip() string { return t.tip }
