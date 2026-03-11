@@ -39,7 +39,7 @@ func logMsg(msg string) {
 	}
 	fn := runtime.FuncForPC(pc).Name()
 	if idx := strings.LastIndex(fn, "."); idx != -1 { fn = fn[idx+1:] }
-	if idx := strings.LastIndex(file, "/"); idx != -1 { file = file[idx+1:] }
+	file = filepath.Base(file)
 	fmt.Printf("[%s] %s (%s:%d) - %s\n", time.Now().Format("2006-01-02 15:04:05.000"), fn, file, line, msg)
 }
 
@@ -626,88 +626,26 @@ func getMindmapBounds(n *Node, minX, minY, maxX, maxY *float32) {
 	if !n.Collapsed { for _, c := range n.Children { getMindmapBounds(c, minX, minY, maxX, maxY) } }
 }
 func colorToRGB(c color.Color) (int, int, int) { r, g, b, _ := c.RGBA(); return int(r >> 8), int(g >> 8), int(b >> 8) }
-func resolveFontPath(linuxPath, winRel string) string {
-	if runtime.GOOS == "windows" { return "C:\\Windows\\Fonts\\" + winRel }
-	if _, err := os.Stat(linuxPath); err == nil { return linuxPath }
-	// WSL fallback
-	wslPath := "/c/Windows/Fonts/" + winRel
-	if _, err := os.Stat(wslPath); err == nil { return wslPath }
-	return "/mnt/c/Windows/Fonts/" + winRel
-}
-
 func getFallbackFontData() []byte {
-	paths := []string{
-		resolveFontPath("", "msyh.ttc"),
-		resolveFontPath("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", "simsun.ttc"),
-		resolveFontPath("", "malgun.ttf"),
-		"/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
-	}
-	for _, p := range paths {
-		if p == "" { continue }
-		if data, err := os.ReadFile(p); err == nil {
-			logMsg("Font: Loading export fallback from " + p)
-			return data
-		}
-	}
-	return theme.DefaultTextFont().Content()
+	return resourceNotoSansCJKkrRegularOtf.StaticContent
 }
 
 func getFallbackFontDataTTF() []byte {
-	paths := []string{
-		resolveFontPath("", "malgun.ttf"),
-		resolveFontPath("", "simhei.ttf"),
-		"/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
-	}
-	for _, p := range paths {
-		if p == "" || strings.HasSuffix(p, ".ttc") { continue }
-		if data, err := os.ReadFile(p); err == nil {
-			logMsg("Font: Loading UI theme font from " + p)
-			return data
-		}
-	}
-	return theme.DefaultTextFont().Content()
+	return resourceNotoSansCJKkrRegularOtf.StaticContent
 }
 
 func getOpentypeFonts() (*opentype.Font, *opentype.Font, *opentype.Font) {
-	var fP, fC, fK *opentype.Font
-	
-	// 1. Primary Latin
-	lP := resolveFontPath("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "arial.ttf")
-	if data, err := os.ReadFile(lP); err == nil {
-		if f, err := opentype.Parse(data); err == nil { fP = f; logMsg("Font: Loaded Latin from " + lP) }
+	fP, _ := opentype.Parse(theme.DefaultTextFont().Content())
+	fCJK, err := opentype.Parse(resourceNotoSansCJKkrRegularOtf.StaticContent)
+	if err != nil {
+		logMsg("Error parsing bundled font: " + err.Error())
+		return fP, fP, fP
 	}
-	if fP == nil { fP, _ = opentype.Parse(theme.DefaultTextFont().Content()) }
-
-	// 2. Chinese/Japanese
-	cPaths := []string{resolveFontPath("", "msyh.ttc"), resolveFontPath("", "simsun.ttc"), "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"}
-	for _, p := range cPaths {
-		if data, err := os.ReadFile(p); err == nil {
-			if coll, err := opentype.ParseCollection(data); err == nil && coll.NumFonts() > 0 {
-				fC, _ = coll.Font(0); logMsg("Font: Loaded Chinese/Japanese from " + p); break
-			} else if f, err := opentype.Parse(data); err == nil {
-				fC = f; logMsg("Font: Loaded Chinese/Japanese (TTF) from " + p); break
-			}
-		}
-	}
-
-	// 3. Korean
-	kPaths := []string{resolveFontPath("", "malgun.ttf"), resolveFontPath("", "batang.ttc")}
-	for _, p := range kPaths {
-		if data, err := os.ReadFile(p); err == nil {
-			if coll, err := opentype.ParseCollection(data); err == nil && coll.NumFonts() > 0 {
-				fK, _ = coll.Font(0); logMsg("Font: Loaded Korean from " + p); break
-			} else if f, err := opentype.Parse(data); err == nil {
-				fK = f; logMsg("Font: Loaded Korean (TTF) from " + p); break
-			}
-		}
-	}
-	
-	if fC == nil { fC = fP }
-	if fK == nil { fK = fC }
-	return fP, fC, fK
+	return fP, fCJK, fCJK
 }
 
 func isRuneKorean(r rune) bool {
+	if r == '\\' { return false }
 	return (r >= 0xAC00 && r <= 0xD7AF) || // Hangul Syllables
 	       (r >= 0x1100 && r <= 0x11FF) || // Hangul Jamo
 	       (r >= 0x3130 && r <= 0x318F) || // Hangul Compatibility Jamo
@@ -716,7 +654,13 @@ func isRuneKorean(r rune) bool {
 }
 
 func isRuneCJK(r rune) bool {
-	return (r >= 0x2E80 && r <= 0x9FFF) || (r >= 0x3400 && r <= 0x4DBF) || (r >= 0x3040 && r <= 0x30FF) || (r >= 0xFF00 && r <= 0xFFEF)
+	if r == '\\' { return false }
+	return (r >= 0x2E80 && r <= 0x9FFF) || // CJK Unified Ideographs and more
+	       (r >= 0x3400 && r <= 0x4DBF) || // CJK Unified Ideographs Extension A
+	       (r >= 0x3040 && r <= 0x309F) || // Hiragana
+	       (r >= 0x30A0 && r <= 0x30FF) || // Katakana
+	       (r >= 0x3000 && r <= 0x303F) || // CJK Symbols and Punctuation
+	       (r >= 0xFF00 && r <= 0xFFEF)    // Halfwidth and Fullwidth Forms
 }
 
 func drawCompositeString(img draw.Image, txt string, x, y float64, fP, fC, fK font.Face, col color.Color) {
@@ -724,6 +668,11 @@ func drawCompositeString(img draw.Image, txt string, x, y float64, fP, fC, fK fo
 	dLat, dChi, dKor := &font.Drawer{Dst: img, Src: image.NewUniform(col), Face: fP, Dot: dot}, &font.Drawer{Dst: img, Src: image.NewUniform(col), Face: fC, Dot: dot}, &font.Drawer{Dst: img, Src: image.NewUniform(col), Face: fK, Dot: dot}
 	for _, r := range txt {
 		s := string(r)
+		if r == '\\' {
+			dLat.DrawString(s)
+			dChi.Dot, dKor.Dot = dLat.Dot, dLat.Dot
+			continue
+		}
 		if isRuneKorean(r) { dKor.DrawString(s); dLat.Dot, dChi.Dot = dKor.Dot, dKor.Dot } else if isRuneCJK(r) { dChi.DrawString(s); dLat.Dot, dKor.Dot = dChi.Dot, dChi.Dot } else { dLat.DrawString(s); dChi.Dot, dKor.Dot = dLat.Dot, dLat.Dot }
 	}
 }
@@ -733,6 +682,10 @@ func measureCompositeString(txt string, fP, fC, fK font.Face) float64 {
 	dLat, dChi, dKor := &font.Drawer{Face: fP}, &font.Drawer{Face: fC}, &font.Drawer{Face: fK}
 	for _, r := range txt {
 		s := string(r)
+		if r == '\\' {
+			tW += dLat.MeasureString(s)
+			continue
+		}
 		if isRuneKorean(r) { tW += dKor.MeasureString(s) } else if isRuneCJK(r) { tW += dChi.MeasureString(s) } else { tW += dLat.MeasureString(s) }
 	}
 	return float64(tW) / 64.0
@@ -755,6 +708,8 @@ func (e *editorApp) setDialogToExeDir(d *dialog.FileDialog) {
 	exe, err := os.Executable()
 	if err != nil { return }
 	dir := filepath.Dir(exe)
+	dir = filepath.FromSlash(dir)
+	dir = strings.ReplaceAll(dir, "₩", "\\")
 	uri := storage.NewFileURI(dir)
 	lister, err := storage.ListerForURI(uri)
 	if err == nil { d.SetLocation(lister) }
@@ -813,11 +768,11 @@ func (e *editorApp) exportPNG() {
 	}, e.window); d.SetFileName("mindmap.png"); e.setDialogToExeDir(d); d.Show()
 }
 func (e *editorApp) openFile() {
-	d := dialog.NewFileOpen(func(r fyne.URIReadCloser, err error) { if err != nil || r == nil { return }; data, _ := io.ReadAll(r); e.entry.SetText(string(data)); e.currentFile = r.URI(); e.window.SetTitle("Mermaid Mindmap Editor - " + e.currentFile.Name()); e.handleRefresh(); r.Close() }, e.window); e.setDialogToExeDir(d); d.Show()
+	d := dialog.NewFileOpen(func(r fyne.URIReadCloser, err error) { if err != nil || r == nil { return }; data, _ := io.ReadAll(r); e.entry.SetText(string(data)); e.currentFile = r.URI(); t := "Mermaid Mindmap Editor - " + filepath.FromSlash(e.currentFile.Path()); e.window.SetTitle(strings.ReplaceAll(t, "₩", "\\")); e.handleRefresh(); r.Close() }, e.window); e.setDialogToExeDir(d); d.Show()
 }
 func (e *editorApp) saveFile() { if e.currentFile == nil { e.saveAsFile(); return }; w, _ := storage.Writer(e.currentFile); w.Write([]byte(e.entry.Text)); w.Close() }
 func (e *editorApp) saveAsFile() {
-	d := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) { if err != nil || w == nil { return }; w.Write([]byte(e.entry.Text)); e.currentFile = w.URI(); e.window.SetTitle("Mermaid Mindmap Editor - " + e.currentFile.Name()); w.Close() }, e.window); e.setDialogToExeDir(d); d.Show()
+	d := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) { if err != nil || w == nil { return }; w.Write([]byte(e.entry.Text)); e.currentFile = w.URI(); t := "Mermaid Mindmap Editor - " + filepath.FromSlash(e.currentFile.Path()); e.window.SetTitle(strings.ReplaceAll(t, "₩", "\\")); w.Close() }, e.window); e.setDialogToExeDir(d); d.Show()
 }
 type tooltipButton struct { widget.Button; tip string; app *editorApp }
 func (t *tooltipButton) Tooltip() string { return t.tip }
@@ -832,6 +787,10 @@ func (m customTheme) Color(n fyne.ThemeColorName, v fyne.ThemeVariant) color.Col
 func (m customTheme) Icon(n fyne.ThemeIconName) fyne.Resource { return theme.DefaultTheme().Icon(n) }
 func (m customTheme) Font(s fyne.TextStyle) fyne.Resource {
 	if s.Monospace { return theme.DefaultTheme().Font(s) }
+	// Return the default font for Bold/Italic to ensure backslash is correct there,
+	// and return Noto ONLY for Regular text. This is a compromise to keep backslash
+	// correct in at least some UI elements while maintaining CJK in nodes.
+	if s.Bold || s.Italic { return theme.DefaultTheme().Font(s) }
 	return fyne.NewStaticResource("CJKFont", getFallbackFontDataTTF())
 }
 func (m customTheme) Size(n fyne.ThemeSizeName) float32 { return theme.DefaultTheme().Size(n) }
