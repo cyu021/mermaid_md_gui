@@ -89,8 +89,7 @@ func (r *backgroundRenderer) Destroy() {}
 
 func (b *interactiveBackground) Dragged(e *fyne.DragEvent) {
 	if b.app.scroll == nil { return }
-	b.app.scroll.Offset.X -= e.Dragged.DX
-	b.app.scroll.Offset.Y -= e.Dragged.DY
+	b.app.scroll.Offset = b.app.scroll.Offset.Subtract(e.Dragged)
 	b.app.scroll.Refresh()
 	if b.app.miniMap != nil { b.app.miniMap.Refresh() }
 }
