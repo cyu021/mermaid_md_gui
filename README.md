@@ -3,6 +3,8 @@ Mermaid Mindmap GUI Editor
 
 A powerful, interactive GUI editor for Mermaid-style mindmaps, built with Go and Fyne.
 
+![Main Interface](look_and_feel.png)
+
 Supported Features
 ------------------
 
@@ -29,15 +31,22 @@ Supported Features
    - Mini-Map: Quick navigation for large diagrams (bottom-right).
    - Auto-Centering: One-click "Refresh & Center" to reset the view.
 
-5. Export Options:
+5. Visual Editing & Context Menus:
+   - **Right-Click Context Menu**: Quickly add children, siblings, or remove nodes directly from the canvas.
+   - **Direct Node Editing**: Click on any node to open a rich text editor for that node's content.
+
+![Node Editing](edit_node.png)
+![Context Menu](right_click_feature.png)
+
+6. Export Options:
    - Export as PNG: High-quality image export with a print-friendly white background.
 
-6. Enhanced Unicode & CJK Support:
+7. Enhanced Unicode & CJK Support:
    - Portability: Now uses bundled Noto Sans CJK KR fonts (no system fonts required).
    - Fixed Symbol Mapping: Backslash (\) is correctly rendered in both GUI and exported images (preventing legacy Won symbol ₩ mapping).
    - Improved Layout: Optimized vertical alignment and node padding for tall Asian characters.
 
-7. Smart File Handling & Path Entry:
+8. Smart File Handling & Path Entry:
    - Manual Path Entry: New dialogs for Open, Save, and Export allow for direct absolute path input or browsing.
    - Consistent Paths: File dialogs default to the application's executable directory.
    - Path Sanitization: Automatic conversion of path separators and Won symbols for consistent display across all platforms.
